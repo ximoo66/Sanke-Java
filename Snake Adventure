@@ -1,0 +1,699 @@
+class Snake {
+  float x, y;
+  float speed = 2;
+  int numSegments = 10; // Number of segments in the snake
+  ArrayList<PVector> segments;
+  float angle;
+  float directionChangeProb = 0.02; // Probability of changing direction at each frame
+  color snakeColor;
+  
+  Snake(float x, float y, color c) {
+    this.x = x;
+    this.y = y;
+    this.snakeColor = c;
+    segments = new ArrayList<PVector>();
+    for (int i = 0; i < numSegments; i++) {
+      segments.add(new PVector(x, y));
+    }
+    angle = random(TWO_PI); // Initial random direction
+  }
+  
+  void update() {
+    // Randomly change direction
+    if (random(1) < directionChangeProb) {
+      angle += random(-PI/2, PI/2);
+    }
+
+    // Move the head of the snake
+    x += speed * cos(angle);
+    y += speed * sin(angle);
+    
+    // Update segments
+    for (int i = numSegments - 1; i > 0; i--) {
+      PVector previous = segments.get(i - 1);
+      segments.get(i).set(previous);
+    }
+    
+    // Update the position of the first segment to the head
+    segments.get(0).set(x, y);
+    
+    // Wrap around the screen
+    x = (x + width) % width;
+    y = (y + height) % height;
+  }
+  
+  void display() {
+    // Draw the snake segments
+    for (PVector segment : segments) {
+      fill(snakeColor);
+      noStroke();
+      ellipse(segment.x, segment.y, 10, 10); // Adjust the size of the segments as needed
+    }
+  }
+}
+class Cell {
+  int x, y;
+
+  Cell(int x, int y) {
+    this.x = x;
+    this.y = y;
+  }
+
+  boolean equals(Cell other) {
+    return this.x == other.x && this.y == other.y;
+  }
+
+  Cell copy() {
+    return new Cell(this.x, this.y);
+  }
+}
+
+class Obstacle {
+  ArrayList<Cell> shape;
+
+  Obstacle(int startX, int startY, int gridSize) {
+    shape = new ArrayList<Cell>();
+    shape.add(new Cell(startX, startY));
+
+    int numSegments = floor(random(1, 5)); // Number of segments in the obstacle
+
+    for (int i = 1; i < numSegments; i++) {
+      int xOffset = floor(random(-1, 2));
+      int yOffset = floor(random(-1, 2));
+
+      int newX = shape.get(i - 1).x + xOffset;
+      int newY = shape.get(i - 1).y + yOffset;
+
+      shape.add(new Cell(newX, newY));
+    }
+  }
+
+ void display() {
+    noFill();
+    stroke(255, 0, 0);  // Set stroke color to red
+    strokeWeight(2);    // Set stroke weight to 2 for a visible outline
+
+    // Draw the inside of the obstacle in black
+    fill(0);
+    for (Cell segment : shape) {
+      rect(segment.x * gridSize, segment.y * gridSize, gridSize, gridSize);
+    }
+
+    noStroke();  // Reset stroke settings
+  }
+}
+
+
+void addObstacles() {
+  obstacles.clear(); // Clear previous obstacles
+  int numObstacles = currentLevel; // Number of obstacles increases with each level
+
+  for (int i = 0; i < numObstacles; i++) {
+    int obsX = floor(random(1, cols - 1));
+    int obsY = floor(random(1, rows - 1));
+
+    // Add an L-shaped obstacle based on the selected configuration
+    Obstacle obstacle = new Obstacle(obsX, obsY, gridSize);
+    obstacles.add(obstacle);
+  }
+}
+import processing.sound.*;
+int numSnakes = 10;
+ArrayList<Snake> snakes;
+SoundFile menuSound;
+SoundFile normalModeSound;
+SoundFile survivalModeSound;
+SoundFile movementSoundUp;
+SoundFile movementSoundRight;
+SoundFile movementSoundDown;
+SoundFile movementSoundLeft;
+SoundFile eatingSound;
+SoundFile storyModeSound;
+SoundFile gameOverSound;
+int lastColorChangeTime = 0;
+int colorChangeInterval = 5000;  // Change color every 5 seconds (in milliseconds)
+int currentLevel = 1;  // Default level for STORY mode
+color frameColor;
+boolean showBackground = true;
+int highestNormalScore = 0;
+float highestSurvivalSpeed = 0;
+int highestStoryLevel = 0;
+int gridSize = 20;
+int cols, rows;
+ArrayList<Cell> snake;
+ArrayList<Obstacle> obstacles;
+int direction = 1; // 0: up, 1: right, 2: down, 3: left
+Cell food;
+boolean gameOver = false;
+int score = 0;
+float snakeSpeed = 10; // Initial speed, you can adjust this value
+int frameCounter = 0;
+float frameInterval = 60 / snakeSpeed;
+
+enum GameState {
+  MAIN_MENU, HOW_TO_PLAY, GAME, PAUSE, GAME_OVER, EXIT
+};
+
+enum GameMode {
+  NORMAL, SURVIVAL, STORY
+};
+
+GameState currentState = GameState.MAIN_MENU;
+GameMode currentGameMode = GameMode.NORMAL;
+
+void setup() {
+  size(1280, 720);
+  frameRate(60);
+  frameColor = color(random(255), random(255), random(255));
+   eatingSound = new SoundFile(this, "eatingSound.wav");
+  menuSound = new SoundFile(this, "menuSound.wav");
+  normalModeSound = new SoundFile(this, "normalModeSound.wav");
+  survivalModeSound = new SoundFile(this, "normalModeSound.wav");
+  movementSoundUp = new SoundFile(this, "movementSoundUp.wav");
+  movementSoundRight = new SoundFile(this, "movementSoundRight.wav");
+  movementSoundDown = new SoundFile(this, "movementSoundDown.wav");
+  movementSoundLeft = new SoundFile(this, "movementSoundLeft.wav");
+  storyModeSound = new SoundFile(this, "storyModeSound.WAV");
+  gameOverSound = new SoundFile(this, "gameOverSound.WAV");
+ 
+   snakes = new ArrayList<Snake>();
+   
+   for (int i = 0; i < numSnakes; i++) {
+    snakes.add(new Snake(random(width), random(height), color(random(255), random(255), random(255))));
+  }
+  cols = floor(width / gridSize);
+  rows = floor(height / gridSize);
+  snake = new ArrayList<Cell>();
+  obstacles = new ArrayList<Obstacle>();
+  snake.add(new Cell(floor(cols / 2), floor(rows / 2)));
+  spawnFood();
+  menuSound.amp(0.5);
+    
+   
+}
+
+void draw() {
+  background(51);
+
+  switch (currentState) {
+    case MAIN_MENU:
+      drawMainMenu();
+      break;
+    case HOW_TO_PLAY:
+      drawHowToPlay();
+      break;
+    case GAME:
+      drawScreenFrame();
+      if (!gameOver) {
+        frameCounter++;
+        if (frameCounter >= frameInterval) {
+          frameCounter = 0;
+          handleInput();
+          moveSnake();
+          checkCollision();
+          checkFood();
+        }
+        displayScore();
+        drawSnake();
+        drawFood();
+        drawObstacles();
+        displayGameMode();  // Display current game mode
+      }
+      break;
+    case GAME_OVER:
+      displayGameOver();
+      break;
+  }
+  if (showBackground) {
+    // Draw snake background only if the option is enabled
+    for (Snake snake : snakes) {
+      snake.update();
+      snake.display();
+    }
+  }
+   
+}
+
+
+void drawScreenFrame() {
+  // Check if 5 seconds have passed since the last color change
+  if (millis() - lastColorChangeTime > colorChangeInterval) {
+    // Change the frame color
+    frameColor = color(random(255), random(255), random(255));
+    
+    // Update the last color change time
+    lastColorChangeTime = millis();
+  }
+
+  stroke(0);  // Set stroke color to black for the border
+  strokeWeight(30); // Increased stroke weight for a thicker frame
+  
+  // Draw the rectangle with the dynamic frame color
+  fill(frameColor);
+  rect(0, 0, width, height);
+
+  strokeWeight(1); // Resetting stroke weight to the default value
+
+  if (menuSound.isPlaying()) {
+    menuSound.stop();
+  }
+
+  if (currentState == GameState.GAME && currentGameMode == GameMode.NORMAL && !normalModeSound.isPlaying()) {
+    normalModeSound.loop();
+  }
+
+  if (currentState == GameState.GAME && currentGameMode == GameMode.SURVIVAL && !survivalModeSound.isPlaying()) {
+    survivalModeSound.loop();
+  }
+
+  if (currentState == GameState.GAME && currentGameMode == GameMode.STORY && !storyModeSound.isPlaying()) {
+    storyModeSound.loop();
+  }
+}
+
+
+void drawMainMenu() {
+  background(40, 53, 147); // Set background color to a deep blue
+
+  // Title
+  fill(255);
+  textSize(48);
+  textAlign(CENTER, CENTER);
+  text("Snake Adventure", width / 2, height / 4);
+
+  // Display highest scores
+  textSize(18);
+  fill(255);
+  textAlign(RIGHT);
+  text("Highest Normal Score: " + highestNormalScore, width - 10, 30);
+  text("Highest Survival Speed: " + highestSurvivalSpeed, width - 10, 60);
+  text("Highest Story Level: " + highestStoryLevel, width - 10, 90);
+  
+  // Developed by and Contact details
+  textSize(14);
+  textAlign(LEFT, BOTTOM);
+  fill(255);
+  text("Developed by Omid Ameri", 10, height - 40);
+  text("Contact: omid.ameri@stud.h-da.de", 10, height - 20);
+  
+  // Buttons
+  drawMenuButton(width / 2, height / 2, "Start", GameState.GAME, GameMode.NORMAL);
+  drawMenuButton(width / 2, height / 2 + 60, "How to Play", GameState.HOW_TO_PLAY, GameMode.NORMAL);
+  drawMenuButton(width / 2, height / 2 + 120, "Story Mode", GameState.GAME, GameMode.STORY);
+  drawMenuButton(width / 2, height / 2 + 180, "Survival Mode", GameState.GAME, GameMode.SURVIVAL);
+  drawMenuButton(width / 2, height / 2 + 240, "Exit", GameState.EXIT, GameMode.NORMAL);
+  
+  // Copyright symbol and sound credit
+  textSize(14);
+  textAlign(RIGHT, BOTTOM);
+  text("© Sound by Omid Ameri", width - 10, height - 20);
+ 
+  // Background Toggle Button
+  drawBackgroundToggleButton(width / 2, height / 2 + 300);
+
+  // Play menu sound
+  if (!menuSound.isPlaying()) {
+    menuSound.play();
+  }
+  stopModeSounds();
+  // Stop other mode sounds
+  
+}
+
+void drawMenuButton(float x, float y, String label, GameState nextState, GameMode nextGameMode) {
+  // Check if the mouse is over the button
+  boolean overButton = mouseX > x - 120 && mouseX < x + 120 && mouseY > y - 30 && mouseY < y + 30;
+
+  // Draw the button
+  fill(overButton ? color(63, 81, 181) : color(92, 107, 192));
+  rect(x - 120, y - 30, 240, 60, 10);
+
+  // Draw the text inside the button
+  fill(255);
+  textSize(20);
+  textAlign(CENTER, CENTER);
+  text(label, x, y);
+
+  // Handle button press
+  if (overButton && mousePressed) {
+    currentState = nextState;
+    currentGameMode = nextGameMode;
+    if (nextState == GameState.EXIT) {
+      exit();
+    }
+  }
+}
+
+void drawBackgroundToggleButton(float x, float y) {
+  // Check if the mouse is over the toggle button
+  boolean overButton = mouseX > x - 70 && mouseX < x + 70 && mouseY > y - 25 && mouseY < y + 25;
+
+  // Draw the toggle button
+  fill(overButton ? color(63, 81, 181) : color(92, 107, 192));
+  rect(x - 70, y - 25, 140, 50, 10);
+
+  // Draw the text inside the toggle button
+  fill(255);
+  textSize(16);
+  textAlign(CENTER, CENTER);
+  text(showBackground ? "Background ON" : "Background OFF", x, y);
+}
+void stopModeSounds() {
+  if (normalModeSound.isPlaying()) {
+    normalModeSound.stop();
+  }
+
+  if (survivalModeSound.isPlaying()) {
+    survivalModeSound.stop();
+  }
+
+  if (storyModeSound.isPlaying()) {
+    storyModeSound.stop();
+  }
+}
+
+void updateHighestScores() {
+  if (currentGameMode == GameMode.NORMAL && score > highestNormalScore) {
+    highestNormalScore = score;
+  } else if (currentGameMode == GameMode.SURVIVAL && snakeSpeed > highestSurvivalSpeed) {
+    highestSurvivalSpeed = snakeSpeed;
+  } else if (currentGameMode == GameMode.STORY && currentLevel > highestStoryLevel) {
+    highestStoryLevel = currentLevel;
+  }
+}
+void drawHowToPlay() {
+  background(40, 53, 147); // Set background color to a deep blue
+
+  // Title
+  fill(255);
+  textSize(48);
+  textAlign(CENTER, CENTER);
+  text("How to Play", width / 2, height / 8);
+
+  // Instructions
+  textSize(20);
+  fill(255);
+  textAlign(LEFT);
+  text("Use Arrow Keys or WASD to move the snake.", width / 8, height / 4);
+  text("Eat the red dots to grow and score points.", width / 8, height / 4 + 40);
+  text("Avoid colliding with the snake's own body and the screen edges.", width / 8, height / 4 + 80);
+  text("Progress through levels with obstacles.", width / 8, height / 4 + 120);
+  text("Survive and grow faster!",width / 8, height / 4 + 160 );
+ 
+  // Back button
+  drawMenuButton(width / 2+400, height / 2 + 240, "Back", GameState.MAIN_MENU, GameMode.NORMAL);
+
+  // Play menu sound
+  if (!menuSound.isPlaying()) {
+    menuSound.play();
+  }
+}
+
+
+
+void drawButton(float x, float y, String label, GameState nextState, GameMode nextGameMode) {
+  if (mouseX > x - 100 && mouseX < x + 100 && mouseY > y - 30 && mouseY < y + 30) {
+    fill(200);
+    if (mousePressed) {
+      currentState = nextState;
+      currentGameMode = nextGameMode;
+      if (nextState == GameState.EXIT) {
+        exit();
+      }
+    }
+  } else {
+    fill(255);
+  }
+  rect(x - 100, y - 30, 200, 60);
+  fill(0);
+  textAlign(CENTER, CENTER);
+  text(label, x, y);
+}
+
+void keyPressed() {
+  if (currentState == GameState.GAME) {
+    handleInput();
+  }
+
+  if (key == 'r' || key == 'R') {
+    restartGame();
+  }
+
+  // Play movement sound only once when a key is pressed
+  if (keyCode == UP || key == 'W' || key == 'w') {
+    if (!movementSoundUp.isPlaying()) {
+      movementSoundUp.play();
+    }
+  } else if (keyCode == RIGHT || key == 'D' || key == 'd') {
+    if (!movementSoundRight.isPlaying()) {
+      movementSoundRight.play();
+    }
+  } else if (keyCode == DOWN || key == 'S' || key == 's') {
+    if (!movementSoundDown.isPlaying()) {
+      movementSoundDown.play();
+    }
+  } else if (keyCode == LEFT || key == 'A' || key == 'a') {
+    if (!movementSoundLeft.isPlaying()) {
+      movementSoundLeft.play();
+    }
+  }
+}
+
+
+
+void handleInput() {
+  if ((keyCode == UP || key == 'W' || key == 'w') && direction != 2) {
+    direction = 0;
+    
+  } else if ((keyCode == RIGHT || key == 'D' || key == 'd') && direction != 3) {
+    direction = 1;
+    
+  } else if ((keyCode == DOWN || key == 'S' || key == 's') && direction != 0) {
+    direction = 2;
+    
+  } else if ((keyCode == LEFT || key == 'A' || key == 'a') && direction != 1) {
+    direction = 3;
+   
+  }
+}
+
+void moveSnake() {
+  Cell head = snake.get(0).copy();
+
+  if (direction == 0) {
+    head.y -= 1;
+  } else if (direction == 1) {
+    head.x += 1;
+  } else if (direction == 2) {
+    head.y += 1;
+  } else if (direction == 3) {
+    head.x -= 1;
+  }
+
+  snake.add(0, head);
+
+  if (head.equals(food)) {
+    score++;
+    spawnFood();
+    if (currentGameMode == GameMode.SURVIVAL) {
+      snakeSpeed += 0.5;  // Increase speed in SURVIVAL mode
+      frameInterval = 60 / snakeSpeed;
+    } else if (currentGameMode == GameMode.STORY) {
+      currentLevel++;  // Increase level in STORY mode
+      addObstacles();
+    }
+  } else {
+    snake.remove(snake.size() - 1);
+  }
+}
+
+
+
+
+void drawObstacles() {
+  for (Obstacle obstacle : obstacles) {
+    obstacle.display();
+  }
+}
+
+void checkCollision() {
+  Cell head = snake.get(0);
+  if (head.x < 1 || head.x >= cols - 1 || head.y < 1 || head.y >= rows - 1) {
+    currentState = GameState.GAME_OVER;
+  }
+  for (int i = 1; i < snake.size(); i++) {
+    if (head.equals(snake.get(i))) {
+      currentState = GameState.GAME_OVER;
+    }
+  }
+  if (currentGameMode == GameMode.STORY) {
+    
+    checkObstacleCollision();
+    
+  }
+}
+
+void checkObstacleCollision() {
+  Cell head = snake.get(0);
+  for (Obstacle obstacle : obstacles) {
+    for (Cell segment : obstacle.shape) {
+      if (head.equals(segment)) {
+        currentState = GameState.GAME_OVER;
+      }
+    }
+  }
+}
+
+void checkFood() {
+  if (food.equals(snake.get(0))) {
+    if (currentGameMode == GameMode.STORY && score > 0 && score % 5 == 0) {
+      currentLevel++;  // Increase level in STORY mode
+      addObstacles();
+    }
+     eatingSound.play();
+    score++;
+    spawnFood();
+   
+    
+  }
+}
+
+
+
+void spawnFood() {
+  int foodX, foodY;
+  do {
+    foodX = floor(random(1, cols - 1));
+    foodY = floor(random(1, rows - 1));
+  } while (isFoodOnSnake(foodX, foodY) || (currentGameMode == GameMode.STORY && isObstacleOnSnake(foodX, foodY)));
+
+  food = new Cell(foodX, foodY);
+ if (score > 0) {
+ eatingSound.play();
+ }
+}
+
+boolean isFoodOnSnake(int foodX, int foodY) {
+  for (Cell segment : snake) {
+    if (foodX == segment.x && foodY == segment.y) {
+      return true;
+    }
+  }
+  return false;
+}
+
+boolean isObstacleOnSnake(float obsX, float obsY) {
+  for (Obstacle obstacle : obstacles) {
+    for (Cell segment : obstacle.shape) {
+      if (obsX == segment.x && obsY == segment.y) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+void drawSnake() {
+  noFill();
+  stroke(255);  // Set stroke color to white
+  strokeWeight(2);  // Set stroke weight to 2 for a visible outline
+
+  fill(0, 150, 0); // Snake body color
+  for (Cell segment : snake) {
+    rect(segment.x * gridSize, segment.y * gridSize, gridSize, gridSize);
+  }
+
+  fill(255, 0, 0); // Snake head color
+  Cell head = snake.get(0);
+  rect(head.x * gridSize, head.y * gridSize, gridSize, gridSize);
+
+  noStroke();  // Reset stroke settings
+}
+
+void drawFood() {
+  noFill();
+  stroke(255);  // Set stroke color to white
+  strokeWeight(2);  // Set stroke weight to 2 for a visible outline
+
+  fill(255, 0, 0);
+  ellipse(food.x * gridSize + gridSize/2, food.y * gridSize + gridSize/2, gridSize, gridSize);
+
+  noStroke();  // Reset stroke settings
+}
+void displayScore() {
+  // Background for score info
+  fill(30, 30, 30, 180);
+  rect(10, 10, 120, 50, 10);
+  
+  fill(255, 255, 255, 200);
+  textSize(24);
+  textAlign(LEFT);
+  text("Score: " + score, 20, 40);
+}
+
+
+
+
+void displayGameOver() {
+  updateHighestScores();
+  fill(255);
+  textSize(32);
+  textAlign(CENTER, CENTER);
+  text("Game Over", width / 2, height / 2 - 20);
+  textSize(20);
+  text("Score: " + score, width / 2, height / 2 + 20);
+  
+  if (!gameOver && !gameOverSound.isPlaying()) {
+    gameOverSound.play();
+  }
+    gameOver = true;
+  text("Press 'R' to restart", width / 2, height / 2 + 60);
+  normalModeSound.stop();
+  storyModeSound.stop();
+  survivalModeSound.stop();
+  
+  
+}
+
+void displayGameMode() {
+  // Background for game mode info
+  fill(30, 30, 30, 180);
+  rect(width - 130, 10, 130, 60, 10);
+  
+  fill(255, 255, 255, 200);
+  textSize(16);
+  textAlign(RIGHT, TOP);
+  if (currentGameMode == GameMode.SURVIVAL) {
+    text("Survival Mode", width - 20, 20);
+    text("Speed: " + snakeSpeed, width - 20, 40);
+  } else if (currentGameMode == GameMode.STORY) {
+    text("Story Mode", width - 20, 20);
+    text("Level: " + currentLevel, width - 20, 40);
+  }
+  else if (currentGameMode == GameMode.NORMAL) {
+    text("Normal Mode", width - 20, 20);
+    
+  }
+}
+
+void restartGame() {
+  currentState = GameState.MAIN_MENU;
+  snake.clear();
+  obstacles.clear();
+  snake.add(new Cell(floor(cols / 2), floor(rows / 2)));
+  direction = 1;
+  spawnFood();
+  gameOver = false;
+  score = 0;
+  snakeSpeed = 10;
+  frameCounter = 0; // Reset frame counter
+  frameInterval = 60 / snakeSpeed;  // Reset frame interval
+  currentLevel = 1;  // Reset level
+}
+void mousePressed() {
+  // Check if the mouse is over the toggle button
+  if (mouseX > width / 2 - 50 && mouseX < width / 2 + 50 && mouseY > height / 2 + 250 && mouseY < height / 2 + 300) {
+    // Toggle the showBackground variable
+    showBackground = !showBackground;
+  }
+}
